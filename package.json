@@ -1,0 +1,16 @@
+{
+  "name": "nyaya-grantha-sarvasvam",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Nyāya Grantha Sarvasvam — a complete digital ecosystem for Nyāya knowledge, research & AI-assisted learning (React + Node.js)",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "setup": "npm --prefix server run setup",
+    "setup:fresh": "npm --prefix server run setup:fresh",
+    "seed:dummy": "npm --prefix server run seed:dummy --",
+    "dev": "node scripts/dev.js",
+    "build": "npm --prefix client run build",
+    "start": "npm --prefix server start"
+  }
+}

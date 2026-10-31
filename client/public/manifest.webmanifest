@@ -1,0 +1,22 @@
+{
+  "name": "Nyāya Grantha Sarvasvam",
+  "short_name": "Nyāya Grantha",
+  "description": "A complete digital ecosystem for Nyāya knowledge, research & AI-assisted learning.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbf7ef",
+  "theme_color": "#14245c",
+  "categories": ["education", "books"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Text Library", "url": "/library" },
+    { "name": "AI Assistant", "url": "/ai" },
+    { "name": "Search", "url": "/search" }
+  ]
+}

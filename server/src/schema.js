@@ -1,0 +1,48 @@
+// MongoDB collections and their indexes. Documents need no schema; the fields of each collection are
+// set by seed.js, the routes and the admin entity definitions (admin-entities.js).
+export const COLLECTIONS = [
+  'settings', 'users', 'plans', 'subscriptions', 'payments', 'categories', 'texts', 'sections', 'quotes', 'audio',
+  'presentations', 'pdfs', 'pdf_sections', 'pdf_pages', 'bookmarks', 'notes', 'reading_progress', 'reading_events', 'ai_logs', 'search_logs', 'glossary',
+  'feedback', 'reviews', 'notifications', 'notification_reads', 'forum_threads', 'forum_posts', 'events',
+  'classes', 'class_members', 'class_posts', 'assignments', 'submissions', 'vendors', 'products', 'otps',
+];
+
+// Every collection gets a unique index on its numeric `id`; these are the extra ones.
+export const INDEXES = [
+  ['settings', { skey: 1 }, { unique: true }],
+  ['users', { email: 1 }, { unique: true }],
+  ['users', { phone: 1 }],
+  ['otps', { target: 1, purpose: 1 }, { unique: true }],
+  ['plans', { slug: 1 }, { unique: true }],
+  ['subscriptions', { user_id: 1, status: 1 }],
+  ['payments', { order_id: 1 }],
+  ['texts', { category_id: 1 }],
+  ['sections', { text_id: 1, sort_order: 1 }],
+  ['pdfs', { status: 1, category_id: 1 }],
+  ['pdfs', { text_id: 1 }],
+  ['pdf_sections', { pdf_id: 1, sort_order: 1 }],
+  ['pdf_pages', { pdf_id: 1, page: 1 }],
+  ['bookmarks', { user_id: 1 }],
+  ['notes', { user_id: 1 }],
+  ['reading_progress', { user_id: 1, text_id: 1 }, { unique: true }],
+  ['reading_events', { user_id: 1, created_at: 1 }],
+  ['ai_logs', { user_id: 1, created_at: 1 }],
+  ['search_logs', { created_at: 1 }],
+  ['notifications', { user_id: 1 }],
+  ['notification_reads', { user_id: 1, notification_id: 1 }],
+  ['forum_posts', { thread_id: 1 }],
+  ['glossary', { slug: 1 }],
+  ['events', { class_id: 1, starts_at: 1 }],
+  ['classes', { join_code: 1 }, { unique: true }],
+  ['classes', { faculty_id: 1 }],
+  ['class_members', { class_id: 1, user_id: 1 }, { unique: true }],
+  ['class_members', { user_id: 1 }],
+  ['class_posts', { class_id: 1, parent_id: 1 }],
+  ['assignments', { class_id: 1, due_at: 1 }],
+  ['submissions', { assignment_id: 1, user_id: 1 }, { unique: true }],
+  ['submissions', { class_id: 1, status: 1 }],
+  ['vendors', { user_id: 1 }, { unique: true }],
+  ['vendors', { status: 1 }],
+  ['products', { status: 1, vendor_id: 1, category: 1 }],
+  ['products', { vendor_id: 1 }],
+];

@@ -1,0 +1,4 @@
+# Nyāya Grantha Sarvasvam is a Node.js + React app (see README.md) — it is not served by Apache.
+# Deny all Apache access so files such as server/.env (secrets) can never be downloaded.
+Require all denied
+ErrorDocument 403 "Nyaya Grantha Sarvasvam runs on Node.js. Start it with: npm start  then open http://localhost:5000"
