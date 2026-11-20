@@ -56,8 +56,9 @@ export function BarList({ items, color = 'var(--ng-saffron)', empty = 'No data y
   if (!items.length) return <div className="small text-muted py-3">{empty}</div>;
   return (
     <div>
-      {items.map((i) => (
-        <div className="ng-hbar" key={i.label} title={`${i.label}: ${i.value}`}>
+      {/* Labels repeat (two uploads can share a title), so rows are keyed by id when given, else by position. */}
+      {items.map((i, n) => (
+        <div className="ng-hbar" key={i.key ?? n} title={`${i.label}: ${i.value}`}>
           <span className="lbl">{i.label}</span>
           <span className="track"><span className="fill d-block" style={{ width: `${(Number(i.value) / max) * 100}%`, background: color }} /></span>
           <span className="num">{i.value}</span>

@@ -148,7 +148,7 @@ export const ENTITIES = {
       }
       if (d.index_status !== 'queued') return null;
       queuePdfIndex(id);
-      return 'Saved. The PDF is being indexed — its chapters and lessons will appear in a moment.';
+      return `Saved. The ${formatOf(d.file || old?.file) === 'pdf' ? 'PDF' : 'document'} is being indexed — its chapters and lessons will appear in a moment.`;
     },
   },
   glossary: {

@@ -11,7 +11,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { Worker } from 'node:worker_threads';
+import { fork } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { config } from './config.js';
 import { find, findOne, insert, remove, update, now } from './db.js';
 import { searchNorm } from '../../shared/translit.js';
@@ -23,13 +24,20 @@ const loadPdfjs = async () => (pdfjsLib ||= await import('pdfjs-dist/legacy/buil
 
 const MAX_BYTES = 100 * 1024 * 1024;
 const DIGITS = '०१२३४५६७८९';
-const NUM = `(?:[0-9]+|[${DIGITS}]+|[ivxlcdm]+|[IVXLCDM]+)`;
+// A well-formed Roman numeral up to 399 ("iv", "XII"), so words made of the same letters ("civil", "mix") are not numbers.
+const ROMAN = '(?=[ivxlcIVXLC])(?:[cC]{0,3})(?:[xX][cC]|[xX][lL]|[lL]?[xX]{0,3})(?:[iI][xX]|[iI][vV]|[vV]?[iI]{0,3})';
+const NUM = `(?:[0-9]+|[${DIGITS}]+|${ROMAN})`;
 
 // Headings that open a chapter-level or lesson-level unit (English, Sanskrit and Hindi).
 const CHAPTER_WORDS = ['chapter', 'chap\\.', 'part', 'book', 'unit', 'module', 'adhyāya', 'adhyaya', 'prakaraṇa', 'prakarana', 'khaṇḍa', 'khanda', 'āhnika', 'ahnika',
-  'अध्यायः', 'अध्याय', 'प्रकरणम्', 'प्रकरण', 'खण्डः', 'खण्ड', 'खंड', 'भागः', 'भाग', 'काण्डम्', 'काण्ड', 'परिच्छेदः', 'परिच्छेद', 'आह्निकम्', 'आह्निक', 'इकाई'];
-const LESSON_WORDS = ['lesson', 'lecture', 'topic', 'section', 'sub-?section', 'pāṭha', 'patha', 'पाठः', 'पाठ', 'अनुच्छेदः', 'अनुच्छेद', 'विषयः', 'व्याख्यानम्', 'व्याख्यान'];
-const wordRx = (words) => new RegExp(`^(?:${words.join('|')})(?=$|[\\s.:\\-–—(]|${NUM})\\s*(${NUM}(?:[.\\-]${NUM})*)?`, 'i');
+  'maṇḍala', 'mandala', 'kāṇḍa', 'kanda', 'skandha', 'parva', 'parvan',
+  'अध्यायः', 'अध्याय', 'प्रकरणम्', 'प्रकरण', 'खण्डः', 'खण्ड', 'खंड', 'भागः', 'भाग', 'काण्डम्', 'काण्ड', 'परिच्छेदः', 'परिच्छेद', 'आह्निकम्', 'आह्निक', 'इकाई',
+  'मण्डलम्', 'मण्डल', 'मंडल', 'स्कन्धः', 'स्कन्ध', 'पर्व'];
+const LESSON_WORDS = ['lesson', 'lecture', 'topic', 'section', 'sub-?section', 'pāṭha', 'patha', 'sūktam?', 'suktam?', 'sarga', 'anuvāka', 'anuvaka', 'pāda', 'adhikaraṇa', 'adhikarana',
+  'पाठः', 'पाठ', 'अनुच्छेदः', 'अनुच्छेद', 'विषयः', 'व्याख्यानम्', 'व्याख्यान', 'सूक्तम्', 'सूक्त', 'सर्गः', 'सर्ग', 'अनुवाकः', 'अनुवाक', 'पादः', 'अधिकरणम्', 'अधिकरण'];
+// The word ends at a space, stop or digit ("Chapter 1", "Chapter12") — a letter would make it a longer word ("Partial",
+// "Sargam"); and the number must end there too, so "Chapter in summary" has no number "i".
+const wordRx = (words) => new RegExp(`^(?:${words.join('|')})(?=$|[\\s.:\\-–—(]|[0-9${DIGITS}])\\s*(${NUM}(?:[.\\-]${NUM})*(?![\\wऀ-ॣ०-९ॱ-ॿ]))?`, 'i');
 export const CHAPTER_RX = wordRx(CHAPTER_WORDS);
 export const LESSON_RX = wordRx(LESSON_WORDS);
 // "1.2 Title", "३. Title", "IV. Title" — Roman numerals only in capitals and followed by a stop, so "Civil law" is prose.
@@ -395,11 +403,26 @@ export function buildSections(pages, headings) {
 
 // Verse numbers closing a verse, as in scriptures and śāstra texts: "॥ १.००१.०१ ॥", "|| 2.47 ||", "॥२-४७॥".
 const VERSE_REF_RX = new RegExp(`(?:॥|\\|\\|)\\s*((?:[0-9]+|[${DIGITS}]+)(?:[.\\-–](?:[0-9]+|[${DIGITS}]+)){1,2})\\s*(?:॥|\\|\\|)?`, 'g');
+// Verse numbers opening a line instead, as in plain-text editions: "1.1.1 अग्निमीळे …", "२.४७ कर्मण्येवाधिकारस्ते …".
+const LEADING_REF_RX = new RegExp(`(^|\\n)[ \\t]*((?:[0-9]+|[${DIGITS}]+)(?:[.\\-](?:[0-9]+|[${DIGITS}]+)){1,2})[.)]?[ \\t]+(?=\\S)`, 'g');
+const refNumber = (s) => Number(String(s).replace(/[०-९]/g, (d) => DIGITS.indexOf(d)));
+
+/** True when nearly every number follows the one before it: numbered verses, not stray decimals at line starts. */
+function inOrder(refs) {
+  let ok = 0;
+  for (let i = 1; i < refs.length; i++) {
+    const a = refs[i - 1].parts.map(refNumber), b = refs[i].parts.map(refNumber);
+    const k = a.findIndex((x, j) => x !== b[j]);
+    if (k < 0 || a[k] < b[k]) ok++;
+  }
+  return ok >= (refs.length - 1) * 0.8;
+}
 
 /**
  * Structure from verse numbers: with three-part numbers (mandala.sūkta.ṛc, adhyāya.pāda.sūtra …) the first part makes
  * the chapters and the first two the lessons; with two-part numbers (chapter.verse) the first part makes the chapters.
  * Each lesson is named by its number and opening words — the traditional way to cite a hymn or section.
+ * The numbers may close each verse ("… ॥ १.१.१ ॥") or open it ("1.1.1 …" at the start of a line).
  * Returns null when the text does not number its verses this way.
  */
 export function verseRefSections(pageTexts) {
@@ -411,13 +434,19 @@ export function verseRefSections(pageTexts) {
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= pos) lo = mid; else hi = mid - 1; }
     return lo + 1;
   };
-  const refs = [...text.matchAll(VERSE_REF_RX)].map((m) => ({ parts: m[1].split(/[.\-–]/), start: m.index, end: m.index + m[0].length }));
-  if (refs.length < 20) return null;
-  const depthCount = {};
-  for (const r of refs) depthCount[r.parts.length] = (depthCount[r.parts.length] || 0) + 1;
-  const depth = Number(Object.entries(depthCount).sort((a, b) => b[1] - a[1])[0][0]);
-  const use = refs.filter((r) => r.parts.length === depth);
-  if (use.length < 20) return null;
+  const pick = (refs, leading) => {
+    if (refs.length < 20) return null;
+    const depthCount = {};
+    for (const r of refs) depthCount[r.parts.length] = (depthCount[r.parts.length] || 0) + 1;
+    const depth = Number(Object.entries(depthCount).sort((a, b) => b[1] - a[1])[0][0]);
+    const use = refs.filter((r) => r.parts.length === depth);
+    if (use.length < 20 || (leading && !inOrder(use))) return null;
+    return { depth, use, leading };
+  };
+  const found = pick([...text.matchAll(VERSE_REF_RX)].map((m) => ({ parts: m[1].split(/[.\-–]/), start: m.index, end: m.index + m[0].length })), false)
+    || pick([...text.matchAll(LEADING_REF_RX)].map((m) => ({ parts: m[2].split(/[.\-]/), start: m.index + m[1].length, end: m.index + m[0].length })), true);
+  if (!found) return null;
+  const { depth, use, leading } = found;
 
   const groupKey = (r) => (depth === 3 ? r.parts.slice(0, 2).join('.') : r.parts[0]);
   const groups = [];
@@ -427,18 +456,20 @@ export function verseRefSections(pageTexts) {
   }
   if (groups.length < 2) return null;
 
-  // One verse per paragraph, ending with its number.
-  const verses = (s) => s.replace(VERSE_REF_RX, (m) => `${m.trim()}\n\n`).replace(/[ \t]*\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  const opening = (s) => s.replace(/\s+/g, ' ').trim().split(' ').slice(0, 4).join(' ');
+  // One verse per paragraph, ending (or, with leading numbers, starting) with its number.
+  const verses = (s) => (leading ? s : s.replace(VERSE_REF_RX, (m) => `${m.trim()}\n\n`)).replace(/[ \t]*\n[ \t]*/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  const opening = (s) => s.replace(/^\s*[0-9०-९]+(?:[.\-][0-9०-९]+)*[.)]?\s+/, '').replace(/\s+/g, ' ').trim().split(' ').slice(0, 4).join(' ');
   const sections = [];
-  const firstFrom = Math.max(0, text.lastIndexOf('\n\n', use[0].start) + 2);
+  const breakBefore = text.lastIndexOf('\n\n', use[0].start);
+  const firstFrom = leading ? use[0].start : breakBefore < 0 ? 0 : breakBefore + 2;
   const front = text.slice(0, firstFrom).trim();
   if (front.split(/\s+/).length > 30) sections.push({ level: 1, kind: 'front', title: 'Front matter', number: null, page_start: 1, page_end: pageAt(firstFrom - 1), text: front });
 
   let from = firstFrom;
   let chapter = null;
-  for (const g of groups) {
-    const to = g.refs.at(-1).end;
+  for (const [k, g] of groups.entries()) {
+    if (leading) from = g.refs[0].start;
+    const to = leading ? groups[k + 1]?.refs[0].start ?? text.length : g.refs.at(-1).end;
     const body = text.slice(from, to);
     if (depth === 3 && g.chapter !== chapter) {
       chapter = g.chapter;
@@ -553,14 +584,24 @@ export const formatOf = (file) => {
   return DOC_EXTS.includes(ext) ? ext : 'pdf';
 };
 
-/** Analysis in a worker thread, so the API keeps answering while a large file is parsed. */
-function analyseInWorker(bytes, manualIndex, format = 'pdf') {
+const WORKER_SCRIPT = fileURLToPath(new URL('./pdf-index-worker.js', import.meta.url));
+
+/**
+ * Analysis in a child process, one file per process: the API keeps answering while a large file is parsed, a crash
+ * inside a parser (seen as a segfault after many worker-thread runs) cannot take the API down, and every byte the
+ * parse used is freed when the process exits (worker threads kept ~30 MB per PDF).
+ */
+function analyseInChild(bytes, manualIndex, format = 'pdf') {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./pdf-index-worker.js', import.meta.url), { workerData: { bytes, manualIndex, format } });
-    const timer = setTimeout(() => { worker.terminate(); reject(new Error('Indexing took longer than 10 minutes and was stopped.')); }, WORKER_TIMEOUT);
-    worker.once('message', (m) => { clearTimeout(timer); worker.terminate(); m.ok ? resolve(m.result) : reject(new Error(m.error)); });
-    worker.once('error', (e) => { clearTimeout(timer); reject(e); });
-    worker.once('exit', (code) => { clearTimeout(timer); if (code !== 0 && code !== 1) reject(new Error(`Indexing stopped unexpectedly (code ${code}).`)); });
+    // execArgv: [] — the child must not inherit flags like --watch or --input-type from however the API was started.
+    const child = fork(WORKER_SCRIPT, [], { serialization: 'advanced', execArgv: [], stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    let settled = false;
+    const finish = (fn, value) => { if (settled) return; settled = true; clearTimeout(timer); fn(value); };
+    const timer = setTimeout(() => { child.kill(); finish(reject, new Error('Indexing took longer than 10 minutes and was stopped.')); }, WORKER_TIMEOUT);
+    child.once('message', (m) => finish(m.ok ? resolve : reject, m.ok ? m.result : new Error(m.error)));
+    child.once('error', (e) => finish(reject, e));
+    child.once('exit', (code, signal) => finish(reject, Object.assign(new Error(`The file reader stopped unexpectedly (${signal || `exit code ${code}`}).`), { crashed: true })));
+    child.send({ bytes, manualIndex, format });
   });
 }
 
@@ -570,7 +611,15 @@ export async function processPdf(id) {
   await update('pdfs', { index_status: 'processing', index_error: null }, { id });
   try {
     const format = formatOf(pdf.file);
-    const result = await analyseInWorker(await readPdfBytes(pdf.file), pdf.toc || '', format);
+    const bytes = await readPdfBytes(pdf.file);
+    let result;
+    try {
+      result = await analyseInChild(bytes, pdf.toc || '', format);
+    } catch (e) {
+      if (!e.crashed) throw e;
+      console.error(`Indexing ${id}: ${e.message} Trying once more.`);
+      result = await analyseInChild(bytes, pdf.toc || '', format);
+    }
     // Images extracted from a previous version of a Word file are replaced by this run's.
     for (const a of pdf.assets || []) removeUploadFile(a);
     await remove('pdf_sections', { pdf_id: id });

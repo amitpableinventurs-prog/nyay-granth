@@ -14,7 +14,6 @@ const PART_WORDS = 1200;
 
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const words = (s) => (String(s).match(/\S+/g) || []).length;
-const para = (text) => ({ kind: 'para', text, html: `<p>${escapeHtml(text)}</p>` });
 
 // ---------------- Safe HTML ----------------
 
@@ -47,6 +46,166 @@ export function sanitizeHtml(node) {
 
 const textOf = (node) => cleanLine(node.text.replace(/\s+/g, ' '));
 
+// ---------------- Raw lines → blocks ----------------
+// Plain text, and Word/ODT files typed without styles, arrive as bare lines. These rules recover their structure:
+// headings, the metadata line under a heading, verses with their line breaks, and paragraphs.
+
+const DIGITS = '०१२३४५६७८९';
+const RULE_RX = /^[=\-_*~#•·.]{3,}$/;
+const VERSE_START_RX = new RegExp(`^((?:[0-9]+|[${DIGITS}]+)(?:[.\\-](?:[0-9]+|[${DIGITS}]+)){1,2})[.)]?\\s+(\\S[\\s\\S]*)$`);
+// "ऋषिः: मधुच्छन्दा …", "Devatā: Agni", "Metre - Gāyatrī" right under a heading.
+const META_RX = /^[^\s:।|]{1,30}(?:\s[^\s:।|]{1,20})?\s*:\s*\S/;
+const BULLET_RX = /^([-•–*▪◦]|\(?\d+[.)]|[a-z][.)])\s/;
+const ENDS_SENTENCE = /[.!?।॥:;"'”’)\]]$/;
+const VERSE_TAIL_RX = new RegExp(`॥\\s*[0-9${DIGITS}.\\-–\\s]*॥?$`);
+
+/** Web addresses in (escaped) HTML as links — only in the text between tags, and not inside an existing link. */
+const linkify = (html) => (/<a\s/.test(html) ? html : html.split(/(<[^>]+>)/).map((part, i) => (i % 2 ? part
+  : part.replace(/https?:\/\/[^\s<]+?(?=[.,;:)\]]?(?:\s|$))/g, (u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`))).join(''));
+/** Escaped text with web addresses as links. */
+const lineHtml = (s) => linkify(escapeHtml(s));
+
+/** A line that names a chapter or lesson: "Mandala 1", "सूक्तम् १.२", "अध्याय ३", "Chapter 4: …". */
+function headingLine(t) {
+  if (t.length > 110 || words(t) > 12 || /[.,;।]$/.test(t)) return false;
+  const c = classify(t);
+  return !!(c.kind && c.number);
+}
+
+const percentile = (nums, p) => {
+  const s = nums.filter((n) => n > 0).sort((a, b) => a - b);
+  return s.length ? s[Math.min(s.length - 1, Math.floor(s.length * p))] : 0;
+};
+
+/**
+ * Lines → blocks. `items` are { text, html?, gap?, soft?, bold? } lines (gap: a blank line came before; soft: a line
+ * break inside the same Word/ODT paragraph came before) or { block } entries
+ * that pass through unchanged (Word headings, lists, tables). With `wrap`, the text is hard-wrapped: lines within a
+ * blank-line group are one paragraph.
+ */
+export function linesToBlocks(items, { wrap = false } = {}) {
+  const lines = items.filter((it) => !it.block);
+  const verseStarts = lines.filter((it) => VERSE_START_RX.test(it.text)).length;
+  // Numbered verses ("1.1.1 …") only when the text is mostly made of them, so "1.2 Background" stays a heading.
+  const verseMode = verseStarts >= 20 && verseStarts >= lines.length * 0.12;
+  // Wrap width: the typical length of a line that runs on into the next one.
+  const wrapped = lines.filter((l, i) => lines[i + 1] && lines[i + 1].gap === false).map((l) => l.text.length);
+  const width = percentile(wrapped, 0.5) || percentile(lines.map((l) => l.text.length), 0.9) || 80;
+
+  const out = [];
+  let cur = null;
+  let afterHeading = false;
+  let gapNext = false;
+  const flush = () => {
+    if (!cur) return;
+    out.push(finishBlock(cur));
+    cur = null;
+  };
+  for (const it of items) {
+    if (it.block) {
+      flush();
+      out.push(it.block);
+      afterHeading = it.block.kind === 'heading';
+      continue;
+    }
+    const t = it.text;
+    // true / false: a blank line came before or not; undefined: unknown (Word paragraphs have no blank lines).
+    const gap = gapNext || it.gap === true ? true : it.gap;
+    gapNext = false;
+
+    if (RULE_RX.test(t.replace(/\s/g, ''))) {
+      // A short line underlined with === or --- is a heading (as in Markdown); any other rule only separates.
+      const len = t.replace(/\s/g, '').length;
+      const one = cur?.lines.length === 1 ? cur.lines[0].text : null;
+      if (one && cur.gap !== false && !gap && /^[=\-]/.test(t) && len >= one.length * 0.7 && len <= one.length * 1.3 + 2 && words(one) <= 12) {
+        cur.heading = true;
+        flush();
+        afterHeading = true;
+      } else flush();
+      gapNext = true;
+      continue;
+    }
+    if (headingLine(t)) {
+      flush();
+      cur = { lines: [it], gap: true, heading: true };
+      flush();
+      afterHeading = true;
+      continue;
+    }
+    if (afterHeading && t.length < 300 && META_RX.test(t)) {
+      flush();
+      out.push({ kind: 'para', meta: true, text: t, html: `<p class="doc-meta">${it.html != null ? linkify(it.html) : lineHtml(t)}</p>` });
+      continue; // a second metadata line may follow
+    }
+    afterHeading = false;
+
+    const verse = verseMode && VERSE_START_RX.test(t);
+    let join = false;
+    let sep = ' ';
+    if (cur && !cur.heading && !verse && !BULLET_RX.test(t)) {
+      const last = cur.lines.at(-1).text;
+      if (it.soft) {
+        join = true; // Shift+Enter: the next line of the same paragraph
+        sep = '\n';
+      } else if (cur.verse) {
+        // The rest of a numbered verse: the following lines up to a blank line (or, without blank lines, while
+        // the previous line ends with a danda or comma).
+        join = cur.lines.length < 8 && (wrap ? !gap : !gap && /[।|,;:]$/.test(last));
+        sep = '\n';
+      } else if (wrap && !gap) {
+        // Hard-wrapped paragraph. A short unpunctuated first line over a full-width one is a heading on its own.
+        const lonelyTitle = cur.lines.length === 1 && last.length < width * 0.5 && !ENDS_SENTENCE.test(last) && t.length >= width * 0.6;
+        join = !lonelyTitle;
+        sep = /[।॥|]$/.test(last) || last.length < width * 0.6 ? '\n' : ' ';
+      } else if (!gap && /[।|]$/.test(last) && VERSE_TAIL_RX.test(t)) {
+        join = true; // "… ।" / "… ॥ १ ॥": the two halves of a verse
+        sep = '\n';
+      } else if (!gap && /[a-z,;’'\-]$/.test(last) && /^[a-z]/.test(t)) {
+        join = true; // an English sentence wrapped onto the next line (one Word paragraph per line)
+      }
+    }
+    if (join) cur.lines.push({ ...it, sep });
+    else {
+      flush();
+      cur = { lines: [it], gap, verse };
+    }
+  }
+  flush();
+  return out;
+}
+
+/** One finished block: its plain text (line breaks kept) and HTML (<br> between lines, verse number set apart). */
+function finishBlock({ lines, heading, verse }) {
+  let text = '';
+  let html = '';
+  lines.forEach((l, i) => {
+    const h = l.html != null ? linkify(l.html) : lineHtml(l.text);
+    if (i === 0) { text = l.text; html = h; return; }
+    if (l.sep === ' ' && /[A-Za-z]-$/.test(text) && /^[a-z]/.test(l.text)) { text = text.slice(0, -1) + l.text; html = html.replace(/-$/, '') + h; return; }
+    text += l.sep + l.text;
+    html += l.sep === '\n' ? `<br>${h}` : ` ${h}`;
+  });
+  // Word lines say whether they are bold; plain text cannot (undefined).
+  const bold = lines.every((l) => l.bold === true) ? true : lines.some((l) => l.bold === false) ? false : undefined;
+  if (heading) return { kind: 'para', text, html: `<p><strong>${html}</strong></p>`, bold: true, heading: true };
+  if (verse) {
+    const [, no] = text.match(VERSE_START_RX);
+    const lead = escapeHtml(no);
+    const rest = html.startsWith(lead) ? html.slice(lead.length).replace(/^[.)]?\s+/, '') : lineHtml(text.slice(no.length).replace(/^[.)]?\s+/, '')).replace(/\n/g, '<br>');
+    return { kind: 'para', text, html: `<p class="verse numbered"><span class="verse-no">${lead}</span>${rest}</p>`, verse: true };
+  }
+  return { kind: 'para', text, html: `<p${lines.length > 1 && lines.some((l) => l.sep === '\n') && /[।॥|]/.test(text) ? ' class="verse"' : ''}>${html}</p>`, bold };
+}
+
+/** HTML for text that has no markup of its own (verse-numbered sections): paragraphs, line breaks, verse numbers. */
+function textToHtml(text) {
+  return String(text).split(/\n{2,}/).filter((p) => p.trim()).map((p) => {
+    const lines = p.split('\n').map((l) => ({ text: l.trim(), sep: '\n' })).filter((l) => l.text);
+    const m = lines[0]?.text.match(VERSE_START_RX);
+    return finishBlock({ lines, verse: !!m }).html;
+  }).join('\n');
+}
+
 // ---------------- Readers: bytes → blocks ----------------
 
 /** Word .docx via mammoth: Word's heading styles become headings; images are saved to uploads/. */
@@ -73,25 +232,47 @@ async function docxBlocks(bytes, assets) {
     }),
   });
   const root = parse(value);
-  const blocks = [];
+  const items = [];
   for (const el of root.childNodes) {
     if (el.nodeType !== 1) continue;
     const tag = el.rawTagName.toLowerCase();
     const text = textOf(el);
     const html = sanitizeHtml(el);
     if (/^h[1-6]$/.test(tag)) {
-      if (text) blocks.push({ kind: 'heading', level: Number(tag[1]), text, html, docTitle: el.classList?.contains('doc-title') });
+      if (text) items.push({ block: { kind: 'heading', level: Number(tag[1]), text, html, docTitle: el.classList?.contains('doc-title') } });
     } else if (tag === 'ul' || tag === 'ol') {
-      blocks.push({ kind: 'para', text: el.querySelectorAll('li').map((li) => `- ${textOf(li)}`).join('\n'), html });
+      items.push({ block: { kind: 'para', text: el.querySelectorAll('li').map((li) => `- ${textOf(li)}`).join('\n'), html } });
     } else if (tag === 'table') {
-      blocks.push({ kind: 'para', text: el.querySelectorAll('tr').map((tr) => tr.querySelectorAll('td,th').map(textOf).join(' | ')).join('\n'), html });
-    } else if (text || html.includes('<img')) {
+      items.push({ block: { kind: 'para', text: el.querySelectorAll('tr').map((tr) => tr.querySelectorAll('td,th').map(textOf).join(' | ')).join('\n'), html } });
+    } else if (html.includes('<img')) {
+      items.push({ block: { kind: 'para', text, html } });
+    } else if (text) {
       // A short paragraph set entirely in bold is often a heading typed without a heading style.
       const strong = el.querySelectorAll('strong').map((s) => s.text).join('').trim();
-      blocks.push({ kind: 'para', text, html, bold: !!text && strong.length >= text.replace(/\s/g, '').length * 0.9 });
+      const bold = strong.length >= text.replace(/\s/g, '').length * 0.9;
+      const inner = tag === 'p' ? el.childNodes.map(sanitizeHtml).join('') : html;
+      // Lines separated by Shift+Enter (common between the halves of a verse) are lines of the same paragraph.
+      inner.split('<br>').forEach((part, k) => {
+        const line = cleanLine(parse(part).text.replace(/\s+/g, ' '));
+        if (line) items.push({ text: line, html: part.trim(), bold, ...(k ? { soft: true } : {}) });
+      });
+    } else {
+      items.push({ text: '', gap: true }); // an empty paragraph works like a blank line
     }
   }
-  return blocks;
+  return linesToBlocks(withGaps(items));
+}
+
+/** Folds empty lines into a `gap` flag on the line after them. */
+function withGaps(items) {
+  const out = [];
+  let gap = false;
+  for (const it of items) {
+    if (!it.block && !it.text) { gap = true; continue; }
+    out.push(gap && !it.block ? { ...it, gap: true } : it);
+    gap = false;
+  }
+  return out;
 }
 
 /** OpenDocument .odt: text:h (with its outline level) and text:p / lists from content.xml. */
@@ -111,25 +292,26 @@ async function odtBlocks(bytes) {
     if (tag === 'text:note') return '';
     return (node.childNodes || []).map(textOfOdt).join('');
   };
-  const blocks = [];
+  const items = [];
   const walk = (node) => {
     for (const el of node.childNodes || []) {
       if (el.nodeType !== 1) continue;
       if (el.rawTagName === 'text:h') {
         const text = cleanLine(textOfOdt(el));
         const level = Number(el.getAttribute('text:outline-level')) || 1;
-        if (text) blocks.push({ kind: 'heading', level, text, html: `<h${Math.min(6, level)}>${escapeHtml(text)}</h${Math.min(6, level)}>` });
+        if (text) items.push({ block: { kind: 'heading', level, text, html: `<h${Math.min(6, level)}>${escapeHtml(text)}</h${Math.min(6, level)}>` } });
       } else if (el.rawTagName === 'text:p') {
-        const text = cleanLine(textOfOdt(el));
-        if (text) blocks.push(para(text));
+        const lines = textOfOdt(el).split('\n').map(cleanLine);
+        if (!lines.some(Boolean)) items.push({ text: '' });
+        lines.filter(Boolean).forEach((text, k) => items.push({ text, ...(k ? { soft: true } : {}) }));
       } else if (el.rawTagName === 'text:list-item') {
         const text = cleanLine(textOfOdt(el));
-        if (text) blocks.push({ kind: 'para', text: `- ${text}`, html: `<ul><li>${escapeHtml(text)}</li></ul>` });
+        if (text) items.push({ block: { kind: 'para', text: `- ${text}`, html: `<ul><li>${escapeHtml(text)}</li></ul>` } });
       } else walk(el);
     }
   };
   walk(body);
-  return blocks;
+  return linesToBlocks(withGaps(items));
 }
 
 /** Old Word .doc (text only). */
@@ -151,6 +333,7 @@ export function rtfToText(rtf) {
   for (let i = 0; i < rtf.length; i++) {
     const ch = rtf[i];
     if (fallback > 0) {
+      if (ch === '\r' || ch === '\n') continue; // writers wrap long lines anywhere, even inside a fallback
       if (ch === '\\' && rtf[i + 1] === "'") { i += 3; fallback--; continue; }
       if (ch !== '\\' && ch !== '{' && ch !== '}') { fallback--; continue; }
       fallback = 0;
@@ -192,16 +375,15 @@ export function textBlocks(text) {
   const filled = lines.filter((l) => l.trim());
   const blank = lines.length - filled.length;
   const avg = filled.reduce((n, l) => n + l.trim().length, 0) / Math.max(1, filled.length);
-  const blocks = [];
-  if (blank >= lines.length * 0.08 && avg < 100) {
-    let cur = [];
-    const flush = () => { const t = cleanLine(cur.join(' ')); if (t) blocks.push(para(t)); cur = []; };
-    for (const l of lines) { if (l.trim()) cur.push(l.trim()); else flush(); }
-    flush();
-  } else {
-    for (const l of lines) { const t = cleanLine(l); if (t) blocks.push(para(t)); }
+  const items = [];
+  let gap = true;
+  for (const l of lines) {
+    const t = cleanLine(l);
+    if (!t) { gap = true; continue; }
+    items.push({ text: t, gap });
+    gap = false;
   }
-  return blocks;
+  return linesToBlocks(items, { wrap: blank >= lines.length * 0.08 && avg < 100 });
 }
 
 /** Markdown: "#" headings, the rest as paragraphs (with **bold** and *italic*). */
@@ -290,7 +472,7 @@ function styledMarks(blocks) {
 function guessedMarks(blocks) {
   const marks = [];
   blocks.forEach((b, at) => {
-    if (b.kind !== 'para' || !b.text || b.text.includes('\n')) return;
+    if (b.kind !== 'para' || !b.text || b.verse || b.meta || b.text.includes('\n')) return;
     const wc = words(b.text);
     if (wc > 14 || b.text.length > 110 || /[.,;]$/.test(b.text)) return;
     const info = classify(b.text);
@@ -347,12 +529,18 @@ function partSections(blocks) {
 export async function analyseDocument(bytes, format, { manualIndex = '' } = {}) {
   const assets = [];
   let blocks;
-  if (format === 'docx') blocks = await docxBlocks(bytes, assets);
-  else if (format === 'odt') blocks = await odtBlocks(bytes);
-  else if (format === 'doc') blocks = await docBlocks(bytes);
-  else if (format === 'rtf') blocks = textBlocks(rtfToText(decodeText(bytes)));
-  else if (format === 'md') blocks = markdownBlocks(decodeText(bytes));
-  else blocks = textBlocks(decodeText(bytes));
+  try {
+    if (format === 'docx') blocks = await docxBlocks(bytes, assets);
+    else if (format === 'odt') blocks = await odtBlocks(bytes);
+    else if (format === 'doc') blocks = await docBlocks(bytes);
+    else if (format === 'rtf') blocks = textBlocks(rtfToText(decodeText(bytes)));
+    else if (format === 'md') blocks = markdownBlocks(decodeText(bytes));
+    else blocks = textBlocks(decodeText(bytes));
+  } catch (e) {
+    // Library messages ("Can't find end of central directory") mean nothing to an editor: they go to the server log.
+    console.error(`Could not read a .${format} upload:`, e?.message || e);
+    throw new Error(`This .${format} file could not be read — it may be damaged, or another kind of file renamed to .${format}. Open it in Word (or another editor), save it again, and upload that copy.`);
+  }
 
   const total = blocks.reduce((n, b) => n + words(b.text), 0);
   const strong = (ms) => ms.filter((m) => m.level <= 2).length >= 2;
@@ -366,7 +554,7 @@ export async function analyseDocument(bytes, format, { manualIndex = '' } = {}) 
   else if (strong(guessed) && guessed.filter((m) => m.number || m.kind).length >= 2) { method = 'headings'; sections = sectionsFromMarks(blocks, guessed); }
   else {
     const verses = total ? verseRefSections([blocks.map((b) => b.text).join('\n\n')]) : null;
-    if (verses) { method = 'verses'; sections = verses.map((s) => ({ ...s, html: null })); }
+    if (verses) { method = 'verses'; sections = verses.map((s) => ({ ...s, html: s.text ? textToHtml(s.text) : null })); }
     else if (strong(guessed)) { method = 'headings'; sections = sectionsFromMarks(blocks, guessed); }
     else if (styled.length) { method = 'styles'; sections = sectionsFromMarks(blocks, styled); }
     else if (total) { method = 'parts'; sections = partSections(blocks); }

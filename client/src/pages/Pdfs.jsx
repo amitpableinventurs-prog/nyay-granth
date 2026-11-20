@@ -92,7 +92,10 @@ export function PdfView() {
   const [side, setSide] = useState(false); // contents panel on small screens
   usePageTitle(data?.title);
 
-  const mode = params.get('mode') === 'text' ? 'text' : 'pdf';
+  const p = data;
+  const format = p?.format || (String(p?.file || '').split(/[?#]/)[0].split('.').pop().toLowerCase());
+  const isPdf = !format || format === 'pdf';
+  const mode = isPdf && params.get('mode') === 'text' ? 'text' : isPdf ? 'pdf' : 'text';
   const sectionId = Number(params.get('s')) || null;
   const setQuery = (patch) => {
     const p = new URLSearchParams(params);
@@ -102,6 +105,7 @@ export function PdfView() {
 
   const index = data?.index || [];
   const hasText = index.some((s) => s.word_count > 0);
+  const effectiveSectionId = sectionId || index.find((s) => s.word_count > 0)?.id || null;
   // The chapter/lesson the reader is in: the last entry starting on or before the current page.
   const current = useMemo(() => {
     if (mode === 'text') return index.find((s) => s.id === sectionId) || null;
@@ -112,7 +116,6 @@ export function PdfView() {
 
   if (loading) return <Loader />;
   if (error) return <ErrorBox error={error} />;
-  const p = data;
   const countDownload = () => post(`/pdfs/${p.id}/download`).catch(() => {});
   const goPage = (n) => { setQuery({ mode: null, s: null, page: n }); setJump((j) => ({ page: n, n: j.n + 1 })); setSide(false); };
   const openText = (sid) => { setQuery({ mode: 'text', s: sid, page: null }); setSide(false); window.scrollTo({ top: 0 }); };
@@ -141,10 +144,15 @@ export function PdfView() {
               <i className={`bi ${side ? 'bi-x-lg' : 'bi-list-nested'}`} /> {t('Contents & search')}
             </button>
             {current && <span className="ng-pdfread-where text-truncate"><i className="bi bi-bookmark" /> {current.title}</span>}
-            {hasText && !p.locked && (
+            {hasText && !p.locked && isPdf && (
               <div className="ng-seg-pill ms-auto" role="tablist" aria-label={t('View')}>
                 <button role="tab" aria-selected={mode === 'pdf'} className={mode === 'pdf' ? 'on' : ''} onClick={() => goPage(current?.page_start || page)}><i className="bi bi-file-earmark-pdf" /> PDF</button>
                 <button role="tab" aria-selected={mode === 'text'} className={mode === 'text' ? 'on' : ''} onClick={() => openText(current?.id || index.find((s) => s.word_count > 0)?.id)}><i className="bi bi-text-paragraph" /> {t('Text')}</button>
+              </div>
+            )}
+            {hasText && !p.locked && !isPdf && (
+              <div className="ng-seg-pill ms-auto">
+                <button role="tab" aria-selected="true" className="on"><i className="bi bi-text-paragraph" /> {t('Text')}</button>
               </div>
             )}
           </div>
@@ -154,8 +162,15 @@ export function PdfView() {
               <div className="col-4 col-md-3"><PdfCover pdf={p} /></div>
               <div className="col-12 col-md-9"><LockCard what={t('This PDF')} /></div>
             </div>
-          ) : mode === 'text' && sectionId ? (
-            <SectionReader pdfId={p.id} sectionId={sectionId} onOpen={openText} onPage={goPage} partial={p.index_stats?.text_quality === 'partial'} />
+          ) : mode === 'text' && effectiveSectionId ? (
+            <SectionReader pdfId={p.id} sectionId={effectiveSectionId} onOpen={openText} onPage={goPage} partial={p.index_stats?.text_quality === 'partial'} />
+          ) : !isPdf ? (
+            <div className="ng-card text-center py-5">
+              <i className="bi bi-file-earmark-text display-5 text-saffron" />
+              <h6 className="mt-3">{p.title}</h6>
+              <p className="text-muted small">No readable text could be extracted from this document.</p>
+              {p.is_downloadable && <a href={p.file} className="btn btn-sm btn-outline-primary" download><i className="bi bi-download me-1" /> Download original</a>}
+            </div>
           ) : (
             <Suspense fallback={<Loader />}>
               <PdfViewer url={p.file} title={p.title} download={!!p.is_downloadable} onDownload={countDownload} jumpTo={jump} onPageChange={setPage} />
@@ -235,13 +250,13 @@ function PdfSidebar({ pdf, index, current, mode, hasText, onPage, onText }) {
           </ol>
         </div>
       ) : (
-        <PdfSearch pdfId={pdf.id} onPage={onPage} />
+        <PdfSearch pdfId={pdf.id} onPage={onPage} onText={onText} />
       )}
     </div>
   );
 }
 
-function PdfSearch({ pdfId, onPage }) {
+function PdfSearch({ pdfId, onPage, onText }) {
   const [q, setQ] = useState('');
   const [res, setRes] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -258,11 +273,12 @@ function PdfSearch({ pdfId, onPage }) {
         <button className="btn btn-navy" disabled={busy}>{busy ? <span className="spinner-border spinner-border-sm" /> : <i className="bi bi-search" />}</button>
       </form>
       {res?.error && <div className="small text-danger">{res.error}</div>}
-      {res && !res.error && <div className="small text-muted mb-2">{t('{n} pages match', { n: res.total })}</div>}
+      {res && !res.error && <div className="small text-muted mb-2">{t(res.unit === 'sections' ? 'Matches in {n} sections' : '{n} pages match', { n: res.total })}</div>}
       <div className="ng-pdfhits">
+        {/* PDFs match by page; Word and text documents have no pages and match by chapter or lesson. */}
         {res?.hits?.map((h) => (
-          <button key={h.page} onClick={() => onPage(h.page)}>
-            <span className="ng-pdfhit-p">{t('p. {n}', { n: h.page })}</span>
+          <button key={h.page ?? `s${h.section?.id}`} onClick={() => (h.page == null && h.section ? onText(h.section.id) : onPage(h.page))}>
+            {h.page != null && <span className="ng-pdfhit-p">{t('p. {n}', { n: h.page })}</span>}
             {h.section && <span className="ng-pdfhit-s">{h.section.title}</span>}
             <span className="ng-pdfhit-t">{h.snippet}</span>
           </button>
@@ -280,24 +296,31 @@ function SectionReader({ pdfId, sectionId, onOpen, onPage, partial }) {
   if (!data) return null;
   const s = data.section;
   const paras = String(s.text || '').split(/\n{2,}/).filter(Boolean);
+  const paged = s.page_start != null; // Word and text documents have no pages
   return (
     <article className="ng-pdftext" style={{ opacity: loading ? 0.6 : 1 }}>
       {data.parent && <button className="ng-pdftext-crumb" onClick={() => onOpen(data.parent.id)}><i className="bi bi-arrow-up-short" />{data.parent.title}</button>}
       <h2>{s.kind === 'front' ? t('Front matter') : s.title}</h2>
       <div className="ng-pdftext-meta">
-        {s.page_start === s.page_end ? t('p. {n}', { n: s.page_start }) : t('pp. {a}–{b}', { a: s.page_start, b: s.page_end })} · {t('{n} words', { n: s.word_count })}
-        <button className="btn btn-link btn-sm p-0 ms-2" onClick={() => onPage(s.page_start)}><i className="bi bi-file-earmark-pdf" /> {t('View in PDF')}</button>
+        {paged && <>{s.page_start === s.page_end ? t('p. {n}', { n: s.page_start }) : t('pp. {a}–{b}', { a: s.page_start, b: s.page_end })} · </>}
+        {s.word_count > 0 ? t('{n} words', { n: s.word_count }) : t('{n} lessons', { n: data.lessons.length })}
+        {paged && <button className="btn btn-link btn-sm p-0 ms-2" onClick={() => onPage(s.page_start)}><i className="bi bi-file-earmark-pdf" /> {t('View in PDF')}</button>}
       </div>
       {partial && (
         <div className="ng-pdftext-note"><i className="bi bi-exclamation-triangle" /><span>{t("This PDF's font stores some letters without standard Unicode, so a few letters are missing from the text view. Use the PDF view for the exact text.")}</span></div>
       )}
       {data.lessons.length > 0 && (
         <div className="ng-pdftext-lessons">
-          {data.lessons.map((l) => <button key={l.id} onClick={() => onOpen(l.id)}><i className="bi bi-journal-text" />{l.title}<small>{t('p. {n}', { n: l.page_start })}</small></button>)}
+          {data.lessons.map((l) => <button key={l.id} onClick={() => onOpen(l.id)}><i className="bi bi-journal-text" />{l.title}{l.page_start != null && <small>{t('p. {n}', { n: l.page_start })}</small>}</button>)}
         </div>
       )}
-      {paras.length === 0 && <p className="text-muted">{data.lessons.length ? t('This chapter continues in its lessons.') : t('No text was found in this part of the PDF.')}</p>}
-      {paras.map((para, i) => (para.startsWith('### ') ? <h4 key={i}>{para.slice(4)}</h4> : <p key={i}>{para}</p>))}
+      {paras.length === 0 && !s.html && <p className="text-muted">{data.lessons.length ? t('This chapter continues in its lessons.') : t('No text was found in this part of the PDF.')}</p>}
+      {s.html ? (
+        // Formatted text (headings, verses, bold, tables, images), built and sanitised by the server's document indexer.
+        <div className="ng-pdftext-body" dangerouslySetInnerHTML={{ __html: s.html }} />
+      ) : (
+        paras.map((para, i) => (para.startsWith('### ') ? <h4 key={i}>{para.slice(4)}</h4> : <p key={i} className="ng-pdftext-lines">{para}</p>))
+      )}
       <nav className="ng-term-nav">
         {data.prev ? <button onClick={() => onOpen(data.prev.id)}><i className="bi bi-chevron-left" /><span><small>{t('Previous')}</small>{data.prev.title}</span></button> : <span />}
         {data.next ? <button className="text-end" onClick={() => onOpen(data.next.id)}><span><small>{t('Next')}</small>{data.next.title}</span><i className="bi bi-chevron-right" /></button> : <span />}

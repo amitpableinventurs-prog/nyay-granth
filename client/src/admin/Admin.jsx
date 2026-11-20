@@ -156,7 +156,7 @@ function Dashboard({ entities }) {
   const can = (k) => !!entities[k];
 
   const quick = [
-    ['pdfs', 'bi-cloud-arrow-up', 'Upload PDF'],
+    ['pdfs', 'bi-cloud-arrow-up', 'Upload document'],
     ['texts', 'bi-journal-plus', 'Add text'],
     ['events', 'bi-camera-video', 'Schedule class'],
     ['notifications', 'bi-megaphone', 'Send notification'],
@@ -164,7 +164,7 @@ function Dashboard({ entities }) {
 
   const inventory = [
     ['texts', 'bi-book', 'Texts', lib.texts, `${lib.sections} sections`],
-    ['pdfs', 'bi-file-earmark-pdf', 'PDFs', lib.pdfs],
+    ['pdfs', 'bi-file-earmark-pdf', 'Documents', lib.pdfs],
     ['audio', 'bi-music-note-beamed', 'Audio', lib.audio],
     ['presentations', 'bi-easel', 'Presentations', lib.presentations],
     ['glossary', 'bi-translate', 'Dictionary terms', lib.glossary],
@@ -264,13 +264,13 @@ function Dashboard({ entities }) {
         <div className="col-lg-4">
           <div className="ng-panel h-100">
             <div className="ng-panel-head"><div><h2>Most read texts</h2><p>All-time views</p></div>{can('texts') && <Link to="/admin/texts" className="ng-panel-link">Texts</Link>}</div>
-            <BarList items={data.topTexts.map((x) => ({ label: x.title, value: Number(x.views || 0) }))} color="var(--ng-navy-2)" />
+            <BarList items={data.topTexts.map((x) => ({ key: x.id, label: x.title, value: Number(x.views || 0) }))} color="var(--ng-navy-2)" />
           </div>
         </div>
         <div className="col-lg-4">
           <div className="ng-panel h-100">
-            <div className="ng-panel-head"><div><h2>Most viewed PDFs</h2><p>All-time views</p></div>{can('pdfs') && <Link to="/admin/pdfs" className="ng-panel-link">PDFs</Link>}</div>
-            <BarList items={data.topPdfs.map((x) => ({ label: x.title, value: Number(x.views || 0) }))} color="var(--ng-navy-2)" empty="No PDF has been opened yet." />
+            <div className="ng-panel-head"><div><h2>Most viewed documents</h2><p>All-time views</p></div>{can('pdfs') && <Link to="/admin/pdfs" className="ng-panel-link">Library</Link>}</div>
+            <BarList items={data.topPdfs.map((x) => ({ key: x.id, label: x.title, value: Number(x.views || 0) }))} color="var(--ng-navy-2)" empty="No document has been opened yet." />
           </div>
         </div>
         <div className="col-lg-4">
@@ -284,9 +284,9 @@ function Dashboard({ entities }) {
       <div className="row g-3 mb-3">
         <div className="col-xl-7">
           <div className="ng-panel h-100">
-            <div className="ng-panel-head"><div><h2>Recent PDF uploads</h2><p>Newest first</p></div>{can('pdfs') && <Link to="/admin/pdfs/new" className="btn btn-sm btn-saffron"><i className="bi bi-cloud-arrow-up me-1" />Upload</Link>}</div>
+            <div className="ng-panel-head"><div><h2>Recent uploads</h2><p>Newest first</p></div>{can('pdfs') && <Link to="/admin/pdfs/new" className="btn btn-sm btn-saffron"><i className="bi bi-cloud-arrow-up me-1" />Upload</Link>}</div>
             {data.recentPdfs.length === 0 ? (
-              <div className="ng-dash-empty"><i className="bi bi-file-earmark-pdf" /><div>No PDFs yet. Upload books, manuscripts or papers for readers.</div></div>
+              <div className="ng-dash-empty"><i className="bi bi-file-earmark-pdf" /><div>No documents yet. Upload books, manuscripts or papers (PDF, Word, text) for readers.</div></div>
             ) : (
               <div className="ng-rows">
                 {data.recentPdfs.map((p) => (
@@ -438,7 +438,7 @@ function EntityList({ entities }) {
         </div>
         {!ent.readonly && !ent.noCreate && (
           <Link to={`/admin/${entity}/new${parentFilter ? `?${parentFilter}=${query[parentFilter]}` : ''}`} className="btn btn-saffron">
-            <i className={`bi ${entity === 'pdfs' ? 'bi-cloud-arrow-up' : 'bi-plus-lg'} me-1`} />{entity === 'pdfs' ? 'Upload PDF' : 'Add'}
+            <i className={`bi ${entity === 'pdfs' ? 'bi-cloud-arrow-up' : 'bi-plus-lg'} me-1`} />{entity === 'pdfs' ? 'Upload document' : 'Add'}
           </Link>
         )}
       </div>
@@ -631,7 +631,7 @@ function EntityForm({ entities }) {
       <div className="ng-page-head">
         <button className="ng-admin-icon" onClick={() => navigate(-1)} aria-label="Back"><i className="bi bi-arrow-left" /></button>
         <div className="flex-grow-1 min-w-0">
-          <h1>{isNew ? (entity === 'pdfs' ? 'Upload PDF' : `Add · ${ent.label}`) : `Edit · ${ent.label}`}{!isNew && <span className="text-muted fw-normal"> #{id}</span>}</h1>
+          <h1>{isNew ? (entity === 'pdfs' ? 'Upload document' : `Add · ${ent.label}`) : `Edit · ${ent.label}`}{!isNew && <span className="text-muted fw-normal"> #{id}</span>}</h1>
           <p>{isNew ? 'Fields marked * are required.' : values.title || values.name || ''}</p>
         </div>
       </div>
@@ -669,9 +669,9 @@ function EntityForm({ entities }) {
 
 const INDEX_METHOD = {
   outline: "From the PDF's bookmarks",
-  headings: 'Detected from headings (font size, numbering and words like Chapter / Lesson / अध्याय / पाठ)',
+  headings: 'Detected from headings (size, bold, numbering, and words like Chapter / Lesson / Mandala / Sūkta / अध्याय / पाठ / सूक्तम्)',
   manual: 'From the index typed in above',
-  verses: 'From verse numbers (e.g. ॥ १.००१.०१ ॥): first number = chapter, first two = lesson',
+  verses: 'From verse numbers (e.g. ॥ १.००१.०१ ॥ or 1.1.1 at the start of a line): first number = chapter, first two = lesson',
   pages: 'No headings found — split into page ranges',
   styles: "From the document's heading styles (Heading 1 = chapter, Heading 2 = lesson)",
   parts: 'No headings found — split into parts of about 1,200 words',
@@ -694,12 +694,15 @@ function PdfIndexPanel({ id }) {
   if (!data) return null;
   const st = data.index_stats || {};
   const chapters = data.sections.filter((s) => !s.parent_id);
+  const isPdf = !data.format || data.format === 'pdf';
+  // Long works (the Rigveda has 1,028 sūktas) list each chapter's lessons collapsed.
+  const collapse = data.sections.length > 60;
   return (
-    <section className="ng-panel mt-3" aria-label="PDF index">
+    <section className="ng-panel mt-3" aria-label="Document index">
       <div className="ng-panel-head">
         <div>
           <h2>Index · chapters &amp; lessons</h2>
-          <p>{working ? 'Reading the PDF and building its index…' : INDEX_METHOD[data.index_method] || 'Not indexed yet'}{data.indexed_at && !working ? ` · ${fmtDateTime(data.indexed_at)}` : ''}</p>
+          <p>{working ? `Reading the ${isPdf ? 'PDF' : 'document'} and building its index…` : INDEX_METHOD[data.index_method] || (data.index_status === 'failed' ? 'Indexing failed — see the reason below' : 'Not indexed yet')}{data.indexed_at && !working ? ` · ${fmtDateTime(data.indexed_at)}` : ''}</p>
         </div>
         <div className="d-flex align-items-center gap-2">
           {data.index_status && <StatusBadge value={data.index_status} label={{ ready: 'Indexed', queued: 'Queued', processing: 'Processing', no_text: 'No text', failed: 'Failed' }[data.index_status]} />}
@@ -718,21 +721,27 @@ function PdfIndexPanel({ id }) {
       )}
       {!working && data.index_stats && (
         <div className="ng-index-stats">
-          {[['Pages', st.pages], ['Pages with text', st.text_pages], ['Chapters', st.chapters], ['Lessons', st.lessons], ['Words', st.words], ['Header/footer lines removed', st.removed_lines], ['Unreadable characters', st.unreadable_chars]].filter(([, v]) => v !== null && v !== undefined).map(([l, v]) => (
+          {/* Pages, running headers and font problems exist only in PDFs. */}
+          {[['Pages', st.pages], ['Pages with text', st.text_pages], ['Chapters', st.chapters], ['Lessons', st.lessons], ['Words', st.words],
+            ...(isPdf ? [['Header/footer lines removed', st.removed_lines], ['Unreadable characters', st.unreadable_chars]] : [])].filter(([, v]) => v !== null && v !== undefined).map(([l, v]) => (
             <div key={l}><b>{Number(v || 0).toLocaleString('en-IN')}</b><span>{l}</span></div>
           ))}
         </div>
       )}
       {!working && chapters.length > 0 && (
         <ol className="ng-index-tree">
-          {chapters.map((c) => (
-            <li key={c.id}>
-              <IndexRow s={c} />
-              {data.sections.some((l) => l.parent_id === c.id) && (
-                <ol>{data.sections.filter((l) => l.parent_id === c.id).map((l) => <li key={l.id}><IndexRow s={l} /></li>)}</ol>
-              )}
-            </li>
-          ))}
+          {chapters.map((c) => {
+            const lessons = data.sections.filter((l) => l.parent_id === c.id);
+            const list = <ol>{lessons.map((l) => <li key={l.id}><IndexRow s={l} /></li>)}</ol>;
+            return (
+              <li key={c.id}>
+                <IndexRow s={c} />
+                {lessons.length > 0 && (collapse
+                  ? <details className="ng-index-lessons"><summary>{lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'}</summary>{list}</details>
+                  : list)}
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>
@@ -745,9 +754,9 @@ function IndexRow({ s }) {
       <summary>
         <span className="ng-kind">{s.kind === 'front' ? 'front matter' : s.kind}</span>
         <span className="flex-grow-1 min-w-0 text-truncate fw-semibold">{s.title}</span>
-        <small className="text-muted text-nowrap">{s.page_start ? `p. ${s.page_start}${s.page_end !== s.page_start ? `–${s.page_end}` : ''} · ` : ''}{s.word_count} words</small>
+        <small className="text-muted text-nowrap">{s.page_start ? `p. ${s.page_start}${s.page_end !== s.page_start ? `–${s.page_end}` : ''} · ` : ''}{s.word_count ? `${s.word_count} words` : s.level === 1 ? 'text in its lessons' : '0 words'}</small>
       </summary>
-      <p>{s.preview || <em className="text-muted">No text in this part.</em>}{s.preview?.length >= 220 ? '…' : ''}</p>
+      <p style={{ whiteSpace: 'pre-line' }}>{s.preview || <em className="text-muted">{s.level === 1 && !s.word_count ? 'This chapter’s text is in its lessons.' : 'No text in this part.'}</em>}{s.preview?.length >= 220 ? '…' : ''}</p>
     </details>
   );
 }

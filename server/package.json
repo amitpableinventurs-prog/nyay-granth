@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node dev.js",
+    "test": "node --test \"test/*.test.js\"",
     "setup": "node src/setup.js",
     "setup:fresh": "node src/setup.js --fresh",
     "seed:dummy": "node src/seed-dummy.js"

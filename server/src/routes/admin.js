@@ -210,7 +210,7 @@ async function saveRecord(req, res, isNew) {
 
 // PDF Library: the detected index of a PDF (for review), and rebuilding it on demand.
 r.get('/pdfs/:id/index', async (req, res) => {
-  const pdf = await findOne('pdfs', { id: Number(req.params.id) }, { fields: ['id', 'title', 'index_status', 'index_method', 'index_stats', 'index_error', 'indexed_at', 'toc'] });
+  const pdf = await findOne('pdfs', { id: Number(req.params.id) }, { fields: ['id', 'title', 'format', 'index_status', 'index_method', 'index_stats', 'index_error', 'indexed_at', 'toc'] });
   if (!pdf) throw new HttpError(404, 'PDF not found.');
   const sections = await find('pdf_sections', { pdf_id: pdf.id }, { sort: { sort_order: 1 }, fields: ['id', 'parent_id', 'level', 'kind', 'number', 'title', 'page_start', 'page_end', 'word_count', 'text'] });
   res.json({ ...pdf, sections: sections.map(({ text, ...s }) => ({ ...s, preview: String(text || '').slice(0, 220) })) });

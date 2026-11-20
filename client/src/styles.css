@@ -661,6 +661,20 @@ a.ng-cat-chip:hover { background: #fbe3cb; color: #9a3412; }
 .ng-pdftext h2 { font-size: 1.45rem; color: var(--ng-navy); margin: 4px 0 6px; }
 .ng-pdftext h4 { font-size: 1.05rem; color: var(--ng-navy); margin: 22px 0 8px; }
 .ng-pdftext p { font-size: 1.04rem; line-height: 1.8; margin: 0 0 14px; overflow-wrap: anywhere; }
+.ng-pdftext-lines { white-space: pre-line; }
+.ng-pdftext-body h1, .ng-pdftext-body h2, .ng-pdftext-body h3 { font-size: 1.15rem; color: var(--ng-navy); margin: 24px 0 10px; }
+.ng-pdftext-body h4, .ng-pdftext-body h5, .ng-pdftext-body h6 { font-size: 1.02rem; color: var(--ng-navy); margin: 20px 0 8px; }
+.ng-pdftext-body .verse { line-height: 1.95; }
+.ng-pdftext-body .verse.numbered { padding-left: 4.2em; text-indent: -4.2em; }
+/* Sized in its own .78rem font: 4.74em + .64em of it = the 4.2em hanging indent of the verse. */
+.ng-pdftext-body .verse-no { display: inline-block; width: 4.74em; margin-right: .64em; text-indent: 0; text-align: right; font-size: .78rem; font-weight: 600; color: var(--ng-saffron-dark); font-variant-numeric: tabular-nums; }
+.ng-pdftext-body .doc-meta { font-size: .9rem; line-height: 1.6; color: var(--ng-muted); background: #fbf8f2; border-left: 3px solid var(--ng-saffron); border-radius: 0 8px 8px 0; padding: 8px 12px; margin-bottom: 18px; }
+.ng-pdftext-body ul, .ng-pdftext-body ol { margin: 0 0 14px; padding-left: 1.4em; line-height: 1.8; }
+.ng-pdftext-body blockquote { border-left: 3px solid var(--ng-line); padding-left: 14px; color: var(--ng-muted); }
+.ng-pdftext-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 6px 0 14px; }
+.ng-pdftext-body table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: .95rem; display: block; overflow-x: auto; }
+.ng-pdftext-body td, .ng-pdftext-body th { border: 1px solid var(--ng-line); padding: 6px 10px; vertical-align: top; }
+.ng-pdftext-body a { color: var(--ng-saffron-dark); overflow-wrap: anywhere; }
 .ng-pdftext-crumb { border: 0; background: none; padding: 0; color: var(--ng-saffron-dark); font-size: .82rem; font-weight: 600; display: inline-flex; align-items: center; }
 .ng-pdftext-meta { font-size: .82rem; color: var(--ng-muted); margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--ng-line); }
 .ng-pdftext-note { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 18px; padding: 10px 12px; border-radius: 10px; background: #fff7ed; color: #9a3412; font-size: .86rem; }
@@ -683,6 +697,8 @@ a.ng-cat-chip:hover { background: #fbe3cb; color: #9a3412; }
 .ng-index-row summary { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; list-style: none; font-size: .88rem; }
 .ng-index-row summary::-webkit-details-marker { display: none; }
 .ng-index-row summary:hover { background: #f7f8fb; }
+.ng-index-lessons > summary { margin: 0 0 4px 22px; padding: 3px 8px; font-size: .78rem; font-weight: 600; color: var(--ng-saffron-dark); cursor: pointer; width: max-content; border-radius: 6px; }
+.ng-index-lessons > summary:hover { background: #f7f8fb; }
 .ng-index-row p { margin: 0 8px 8px 8px; padding: 8px 10px; background: #f9fafb; border-radius: 8px; font-size: .82rem; color: #475467; }
 
 /* ---- Marketplace ---- */

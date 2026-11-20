@@ -11,6 +11,7 @@
     "seed:dummy": "npm --prefix server run seed:dummy --",
     "dev": "node scripts/dev.js",
     "build": "npm --prefix client run build",
+    "test": "npm --prefix server test",
     "start": "npm --prefix server start"
   }
 }
