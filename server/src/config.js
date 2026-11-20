@@ -1,9 +1,18 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import dns from 'node:dns';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const env = (k, d = '') => process.env[k] ?? d;
+
+if (env('MONGODB_URI', '').startsWith('mongodb+srv://')) {
+  try {
+    dns.setServers(env('MONGODB_DNS_SERVERS', '1.1.1.1,8.8.8.8').split(',').map((server) => server.trim()).filter(Boolean));
+  } catch (e) {
+    console.error(`Could not configure Atlas DNS servers: ${e.message}`);
+  }
+}
 
 export const config = {
   port: Number(env('PORT', 5070)),
