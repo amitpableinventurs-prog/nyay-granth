@@ -9,7 +9,7 @@ import { t } from '../i18n.jsx';
 
 const toInput = (d) => (d ? String(d).replace(' ', 'T').slice(0, 16) : '');
 const isPast = (d) => !!d && new Date(String(d).replace(' ', 'T')) < new Date();
-const joinUrl = (code) => `${window.location.origin}/classes/join/${code}`;
+const joinUrl = (code) => `${window.location.origin}${import.meta.env.BASE_URL}classes/join/${code}`;
 const plural = (n, one, many) => `${n} ${t(n === 1 ? one : many)}`;
 
 /** Status of one student's work on an assignment: [label, bootstrap colour]. */

@@ -1,6 +1,8 @@
 // Offline reading: app shell + previously opened texts stay available without a connection.
 const VERSION = 'ng-v1';
-const SHELL = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
+// Base path the worker is served from: '/' locally, '/<repo>/' on GitHub Pages.
+const BASE = self.location.pathname.replace(/sw\.js$/, '');
+const SHELL = ['', 'manifest.webmanifest', 'icon.svg', 'icon-192.png'].map((p) => BASE + p);
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -31,7 +33,7 @@ self.addEventListener('fetch', (e) => {
 
   // SPA navigations: network first, fall back to the cached shell.
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).catch(() => caches.match('/')));
+    e.respondWith(fetch(req).catch(() => caches.match(BASE)));
     return;
   }
 

@@ -67,7 +67,7 @@ function Private({ children, staff = false }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <AuthProvider>
         <I18nProvider>
         <Suspense fallback={<Loader />}>

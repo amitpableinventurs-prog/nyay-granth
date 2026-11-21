@@ -149,7 +149,7 @@ function TermDetail({ slug, keep }) {
 
   const g = data.term;
   const m = meaningOf(g);
-  const url = `${window.location.origin}/dictionary/${g.slug}`;
+  const url = `${window.location.origin}${import.meta.env.BASE_URL}dictionary/${g.slug}`;
   const copy = async () => {
     try { await navigator.clipboard.writeText(`${g.term_devanagari} (${g.term}) — ${g.meaning}\n${url}`); toast(t('Copied')); } catch { toast(t('Could not copy'), 'error'); }
   };

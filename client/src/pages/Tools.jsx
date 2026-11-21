@@ -104,7 +104,7 @@ export function TranslitTool() {
 
 // ---------------- Citation Generator ----------------
 export function CitationTool() {
-  const [f, setF] = useState({ author: 'Gautama', title: 'Nyāya Sūtra', translator: '', editor: '', publisher: 'Nyāya Grantha Sarvasvam', city: '', year: String(new Date().getFullYear()), edition: '', pages: '', url: window.location.origin, accessed: new Date().toISOString().slice(0, 10) });
+  const [f, setF] = useState({ author: 'Gautama', title: 'Nyāya Sūtra', translator: '', editor: '', publisher: 'Nyāya Grantha Sarvasvam', city: '', year: String(new Date().getFullYear()), edition: '', pages: '', url: window.location.origin + import.meta.env.BASE_URL, accessed: new Date().toISOString().slice(0, 10) });
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const cites = citations(f);
   const render = (s) => s.split('*').map((part, i) => (i % 2 ? <em key={i}>{part}</em> : part));

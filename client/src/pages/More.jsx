@@ -19,7 +19,7 @@ export default function More() {
               <Link key={i.to} to={i.to} className="ng-feature"><span className="tile" style={{ '--c': i.color }}><i className={`bi ${i.icon}`} /></span>{t(i.label)}</Link>
             ))}
             {g.group === 'Account & Help' && (
-              <button className="ng-feature border-0 bg-transparent" onClick={() => share({ title: 'Nyāya Grantha Sarvasvam', text: 'A complete digital ecosystem for Nyāya knowledge, research & AI-assisted learning.', url: window.location.origin })}>
+              <button className="ng-feature border-0 bg-transparent" onClick={() => share({ title: 'Nyāya Grantha Sarvasvam', text: 'A complete digital ecosystem for Nyāya knowledge, research & AI-assisted learning.', url: window.location.origin + import.meta.env.BASE_URL })}>
                 <span className="tile" style={{ '--c': '#0ea5e9' }}><i className="bi bi-share" /></span>{t('Share App')}
               </button>
             )}

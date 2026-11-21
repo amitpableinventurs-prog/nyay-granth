@@ -17,6 +17,8 @@ const apiProxy = {
 };
 
 export default defineConfig({
+  // GitHub Pages serves the app from /<repo>/; VITE_BASE sets that prefix at build time.
+  base: process.env.VITE_BASE || '/',
   plugins: [react()],
   resolve: { alias: { '@shared': path.resolve(__dirname, '../shared') } },
   server: {

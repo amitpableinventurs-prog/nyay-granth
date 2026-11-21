@@ -162,7 +162,7 @@ export default function TextReader() {
                   <button onClick={() => setAi({ mode: 'summarize', section: s })}><i className="bi bi-card-text" />{t('Summary')}</button>
                   <button onClick={() => setAi({ mode: 'translate', section: s })}><i className="bi bi-translate" />{t('Translate')}</button>
                   <button className={speaking === s.id ? 'on' : ''} onClick={() => listen(s)}><i className={`bi ${speaking === s.id ? 'bi-stop-circle' : 'bi-volume-up'}`} />{t('Listen')}</button>
-                  <button onClick={() => share({ title: `${text.title} ${s.ref || ''}`, text: sectionText(s), url: `${window.location.origin}/text/${text.id}?s=${s.id}` })}><i className="bi bi-share" />{t('Share')}</button>
+                  <button onClick={() => share({ title: `${text.title} ${s.ref || ''}`, text: sectionText(s), url: `${window.location.origin}${import.meta.env.BASE_URL}text/${text.id}?s=${s.id}` })}><i className="bi bi-share" />{t('Share')}</button>
                 </div>
               </article>
             );

@@ -1,5 +1,7 @@
 // Thin fetch wrapper for the REST API. The JWT lives in localStorage.
 const TOKEN_KEY = 'ng_token';
+// Same-origin `/api` by default; VITE_API_URL points a static build (e.g. GitHub Pages) at a hosted server.
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '') + '/api';
 
 export const getToken = () => {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -44,7 +46,7 @@ async function request(path, { method = 'GET', body, form, onProgress } = {}) {
   }
   let res;
   try {
-    res = await fetch('/api' + path, { method, headers, body: payload });
+    res = await fetch(API_BASE + path, { method, headers, body: payload });
   } catch {
     throw new ApiError(0, 'You appear to be offline. Please check your connection.');
   }
@@ -60,7 +62,7 @@ async function request(path, { method = 'GET', body, form, onProgress } = {}) {
 function xhrUpload(path, method, form, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open(method, '/api' + path);
+    xhr.open(method, API_BASE + path);
     const token = getToken();
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
